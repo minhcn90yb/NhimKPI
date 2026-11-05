@@ -1,0 +1,59 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cài thư viện
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Kiểm thử công thức tính điểm
+        run: python -m unittest discover tests -v
+
+      - name: Đóng gói bằng PyInstaller
+        run: pyinstaller --noconfirm --clean --windowed --onedir --name NhimKPI --icon assets\nhim.ico --add-data "assets;assets" --collect-data customtkinter main.py
+
+      - name: Nén bản chạy trực tiếp (portable)
+        shell: pwsh
+        run: Compress-Archive -Path dist\NhimKPI\* -DestinationPath dist\NhimKPI_portable.zip
+
+      - name: Tạo file cài đặt Setup.exe (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer_windows.iss
+
+      - name: Tải kết quả lên mục Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NhimKPI-Windows
+          path: |
+            dist/NhimKPI_Setup.exe
+            dist/NhimKPI_portable.zip
+
+      - name: Đăng bản phát hành (chỉ khi đẩy tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/NhimKPI_Setup.exe
+            dist/NhimKPI_portable.zip
